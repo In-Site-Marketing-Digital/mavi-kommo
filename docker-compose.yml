@@ -1,0 +1,30 @@
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8080:8080"
+    environment:
+      - KOMMO_CLIENT_ID=${KOMMO_CLIENT_ID}
+      - KOMMO_CLIENT_SECRET=${KOMMO_CLIENT_SECRET}
+      - BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+      - DATA_DIR=/app/data
+    volumes:
+      - kommo_data:/app/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_BACKEND_URL: ${BACKEND_URL:-http://localhost:8080}
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_BACKEND_URL=${BACKEND_URL:-http://localhost:8080}
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  kommo_data:
