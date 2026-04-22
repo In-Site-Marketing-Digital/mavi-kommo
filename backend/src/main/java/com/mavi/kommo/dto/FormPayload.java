@@ -12,35 +12,26 @@ import lombok.Data;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FormPayload {
 
-    private String name;
-    private String email;
-    private String phone;
-
-    @JsonProperty("instagram_handle")
-    private String instagramHandle;
-
-    private String revenue;
-
-    @JsonProperty("pt_investment")
-    private String ptInvestment;
-
-    @JsonProperty("clinic_owner")
-    private Boolean clinicOwner;
+    private Map<String, Object> fields;
+    private Map<String, String> utms;
 
     /**
      * Returns the value for a given payload field key.
      * Used by {@link com.mavi.kommo.service.LeadCreationService} when iterating mappings.
      */
     public Object getField(String fieldName) {
-        return switch (fieldName) {
-            case "name"             -> name;
-            case "email"            -> email;
-            case "phone"            -> phone;
-            case "instagram_handle" -> instagramHandle;
-            case "revenue"          -> revenue;
-            case "pt_investment"    -> ptInvestment;
-            case "clinic_owner"     -> clinicOwner;
-            default                 -> null;
-        };
+        if (fields == null) {
+            return null;
+        }
+        return fields.get(fieldName);
+    }
+
+    /**
+     * Helper to get the name directly if needed.
+     */
+    public String getName() {
+        if (fields == null) return null;
+        Object name = fields.get("name");
+        return name != null ? String.valueOf(name) : null;
     }
 }

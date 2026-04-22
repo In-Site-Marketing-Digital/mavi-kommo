@@ -1,9 +1,18 @@
 {
-    "name": "José",
-    "email": "jose@gmail.com",
-    "phone": "5561982403742",
-    "instagram_handle": "@jose.jose.jose",
-    "revenue": "Mais de 500 mil",
-    "pt_investment": "Mais de 10 mil",
-    "clinic_owner": true
+    "fields": {
+        "name": "José",
+        "email": "jose@gmail.com",
+        "phone": "5561982403742",
+        "instagram_handle": "@jose.jose.jose",
+        "revenue": "Mais de 500 mil",
+        "pt_investment": "Mais de 10 mil",
+        "clinic_owner": true
+    },
+    "utms": {
+        "source": "paid_traffic",
+        "medium": "cpc",
+        "campaign": "mavi_launch",
+        "content": "ad_variant_a",
+        "term": " Conditioning"
+    }
 }

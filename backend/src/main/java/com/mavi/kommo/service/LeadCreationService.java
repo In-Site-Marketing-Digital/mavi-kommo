@@ -3,6 +3,7 @@ package com.mavi.kommo.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.mavi.kommo.domain.FieldMapping;
 import com.mavi.kommo.domain.KommoToken;
+import com.mavi.kommo.domain.KommoField;
 import com.mavi.kommo.dto.FormPayload;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -72,6 +73,37 @@ public class LeadCreationService {
                 leadName = value;
             } else if (!mapping.isStandard()) {
                 customFields.add(buildCustomFieldEntry(mapping, value));
+            }
+        }
+
+        if (payload.getUtms() != null && !payload.getUtms().isEmpty()) {
+            try {
+                List<KommoField> leadCustomFields = kommoApiService.getLeadCustomFields();
+                for (Map.Entry<String, String> utmEntry : payload.getUtms().entrySet()) {
+                    String utmKey = utmEntry.getKey();
+                    String utmValue = utmEntry.getValue();
+
+                    if (utmValue == null || utmValue.isEmpty()) continue;
+
+                    String cleanKey = utmKey.replace(" ", "_").toLowerCase();
+
+                    KommoField matchedField = leadCustomFields.stream()
+                            .filter(f -> {
+                                String cleanField = f.getName().replace(" ", "_").toLowerCase();
+                                return cleanField.equals(cleanKey) || cleanField.equals("utm_" + cleanKey);
+                            })
+                            .findFirst()
+                            .orElse(null);
+
+                    if (matchedField != null && !matchedField.isStandard()) {
+                        customFields.add(Map.of(
+                                "field_id", Integer.parseInt(matchedField.getId()),
+                                "values", List.of(Map.of("value", utmValue))
+                        ));
+                    }
+                }
+            } catch (Exception e) {
+                // Ignore errors fetching custom fields so we don't break lead creation
             }
         }
 
