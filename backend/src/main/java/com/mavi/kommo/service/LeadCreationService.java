@@ -2,9 +2,12 @@ package com.mavi.kommo.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.mavi.kommo.domain.FieldMapping;
+import com.mavi.kommo.domain.FunnelDestination;
+import com.mavi.kommo.domain.IntegrationSettings;
 import com.mavi.kommo.domain.KommoToken;
 import com.mavi.kommo.domain.KommoField;
 import com.mavi.kommo.dto.FormPayload;
+import com.mavi.kommo.repository.SettingsRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
@@ -22,13 +25,13 @@ public class LeadCreationService {
     private final MappingService mappingService;
     private final KommoApiService kommoApiService;
     private final OAuthService oAuthService;
-    private final com.mavi.kommo.repository.SettingsRepository settingsRepository;
+    private final SettingsRepository settingsRepository;
 
     public LeadCreationService(
             MappingService mappingService,
             KommoApiService kommoApiService,
             OAuthService oAuthService,
-            com.mavi.kommo.repository.SettingsRepository settingsRepository) {
+            SettingsRepository settingsRepository) {
         this.mappingService = mappingService;
         this.kommoApiService = kommoApiService;
         this.oAuthService = oAuthService;
@@ -36,11 +39,16 @@ public class LeadCreationService {
     }
 
     public JsonNode createLead(FormPayload payload) {
+        return createLead(payload, null);
+    }
+
+    public JsonNode createLead(FormPayload payload, String direction) {
         KommoToken token = oAuthService.getValidToken();
         List<FieldMapping> mappings = mappingService.getAllMappings();
-        com.mavi.kommo.domain.IntegrationSettings settings = settingsRepository.getSettings();
+        IntegrationSettings settings = settingsRepository.getSettings();
+        FunnelDestination destination = resolveFunnelDestination(settings, direction);
 
-        Map<String, Object> lead = buildLeadPayload(payload, mappings, settings);
+        Map<String, Object> lead = buildLeadPayload(payload, mappings, destination);
         Map<String, Object> contact = buildContactPayload(payload, mappings);
 
         // Embed contact inside the lead for the complex endpoint
@@ -58,7 +66,7 @@ public class LeadCreationService {
 
     // ── Private builders ───────────────────────────────────────────────────────
 
-    private Map<String, Object> buildLeadPayload(FormPayload payload, List<FieldMapping> mappings, com.mavi.kommo.domain.IntegrationSettings settings) {
+    private Map<String, Object> buildLeadPayload(FormPayload payload, List<FieldMapping> mappings, FunnelDestination destination) {
         Map<String, Object> lead = new HashMap<>();
         List<Map<String, Object>> customFields = new ArrayList<>();
         String leadName = "Lead from Form";
@@ -108,9 +116,9 @@ public class LeadCreationService {
         }
 
         lead.put("name", leadName);
-        if (settings != null) {
-            if (settings.getPipelineId() != null) lead.put("pipeline_id", settings.getPipelineId());
-            if (settings.getStatusId() != null) lead.put("status_id", settings.getStatusId());
+        if (destination != null) {
+            if (destination.getPipelineId() != null) lead.put("pipeline_id", destination.getPipelineId());
+            if (destination.getStatusId() != null) lead.put("status_id", destination.getStatusId());
         }
         if (!customFields.isEmpty()) lead.put("custom_fields_values", customFields);
         return lead;
@@ -160,5 +168,45 @@ public class LeadCreationService {
     private String resolveStringValue(FormPayload payload, String payloadField) {
         Object raw = payload.getField(payloadField);
         return raw != null ? String.valueOf(raw) : null;
+    }
+
+    private FunnelDestination resolveFunnelDestination(IntegrationSettings settings, String direction) {
+        if (settings == null) {
+            return new FunnelDestination();
+        }
+
+        Map<String, FunnelDestination> directions = settings.getDirections();
+        String normalizedDirection = normalizeDirection(direction);
+
+        if (normalizedDirection != null && directions != null) {
+            FunnelDestination destination = directions.get(normalizedDirection);
+            if (hasDestination(destination)) {
+                return destination;
+            }
+        }
+
+        if (directions != null) {
+            FunnelDestination defaultDestination = directions.get("mavi");
+            if (hasDestination(defaultDestination)) {
+                return defaultDestination;
+            }
+        }
+
+        return FunnelDestination.builder()
+                .pipelineId(settings.getPipelineId())
+                .statusId(settings.getStatusId())
+                .build();
+    }
+
+    private boolean hasDestination(FunnelDestination destination) {
+        return destination != null
+                && (destination.getPipelineId() != null || destination.getStatusId() != null);
+    }
+
+    private String normalizeDirection(String direction) {
+        if (direction == null || direction.isBlank()) {
+            return null;
+        }
+        return direction.trim().toLowerCase(Locale.ROOT);
     }
 }

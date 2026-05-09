@@ -77,6 +77,21 @@ export const PAYLOAD_FIELDS = [
 
 export type PayloadFieldKey = (typeof PAYLOAD_FIELDS)[number]["key"];
 
+export const DIRECTIONS = [
+  {
+    key: "insite",
+    label: "Insite",
+    description: "Leads enviados com ?direction=insite",
+  },
+  {
+    key: "mavi",
+    label: "Mavi",
+    description: "Leads enviados com ?direction=mavi",
+  },
+] as const;
+
+export type DirectionKey = (typeof DIRECTIONS)[number]["key"];
+
 export interface PipelineStatus {
   id: number;
   name: string;
@@ -90,8 +105,13 @@ export interface Pipeline {
   statuses: PipelineStatus[];
 }
 
-export interface IntegrationSettings {
+export interface FunnelDestination {
   pipelineId?: number | null;
   statusId?: number | null;
 }
 
+export interface IntegrationSettings {
+  pipelineId?: number | null;
+  statusId?: number | null;
+  directions?: Partial<Record<DirectionKey, FunnelDestination>>;
+}

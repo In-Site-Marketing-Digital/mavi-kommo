@@ -38,10 +38,12 @@ function DashboardInner() {
   }, []);
 
   useEffect(() => {
-    fetchData();
-    if (searchParams.get("connected") === "true") {
-      toast.success("Conta Kommo conectada com sucesso!");
-    }
+    queueMicrotask(() => {
+      void fetchData();
+      if (searchParams.get("connected") === "true") {
+        toast.success("Conta Kommo conectada com sucesso!");
+      }
+    });
   }, [fetchData, searchParams]);
 
   const handleDisconnect = async () => {
@@ -58,6 +60,8 @@ function DashboardInner() {
   };
 
   const webhookUrl = `${BACKEND_URL}/webhook/form`;
+  const insiteWebhookUrl = `${webhookUrl}?direction=insite`;
+  const maviWebhookUrl = `${webhookUrl}?direction=mavi`;
   const callbackUrl = `${BACKEND_URL}/auth/kommo/callback`;
   const activeMappings = mappings.length;
 
@@ -167,11 +171,18 @@ function DashboardInner() {
       </div>
 
       {/* ── URLs de configuração ─────────────────────────────────────────── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <UrlCard
-          title="Webhook do Formulário"
-          description="Configure esta URL no seu formulário externo como destino POST."
-          url={webhookUrl}
+          title="Webhook Insite"
+          description="Use esta URL nos formulários que devem cair no destino Insite."
+          url={insiteWebhookUrl}
+          method="POST"
+          badgeColor="bg-violet-500/10 text-violet-400 border-violet-500/20"
+        />
+        <UrlCard
+          title="Webhook Mavi"
+          description="Use esta URL nos formulários que devem cair no destino Mavi."
+          url={maviWebhookUrl}
           method="POST"
           badgeColor="bg-violet-500/10 text-violet-400 border-violet-500/20"
         />

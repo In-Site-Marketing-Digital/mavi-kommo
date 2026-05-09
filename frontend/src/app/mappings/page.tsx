@@ -19,8 +19,11 @@ import {
 } from "@/components/ui/select";
 import { api } from "@/lib/api";
 import {
+  DIRECTIONS,
   PAYLOAD_FIELDS,
+  type DirectionKey,
   type FieldMapping,
+  type FunnelDestination,
   type KommoField,
   type KommoFieldsResponse,
   type Pipeline,
@@ -48,6 +51,26 @@ function parseCompositeId(
   return list?.find((f) => f.id === fieldId) ?? null;
 }
 
+function normalizeDestination(
+  destination?: FunnelDestination | null
+): FunnelDestination {
+  return {
+    pipelineId: destination?.pipelineId ?? null,
+    statusId: destination?.statusId ?? null,
+  };
+}
+
+function toDestinationPayload(destination: FunnelDestination): FunnelDestination {
+  return {
+    pipelineId: destination.pipelineId ?? null,
+    statusId: destination.statusId ?? null,
+  };
+}
+
+function destinationSelectValue(value?: number | null): string {
+  return value ? String(value) : "";
+}
+
 export default function MappingsPage() {
   const [kommoFields, setKommoFields] = useState<KommoFieldsResponse | null>(
     null
@@ -56,8 +79,12 @@ export default function MappingsPage() {
     PAYLOAD_FIELDS.map((f) => ({ payloadField: f.key, selectedFieldId: "" }))
   );
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
-  const [activePipelineId, setActivePipelineId] = useState<string>("");
-  const [activeStatusId, setActiveStatusId] = useState<string>("");
+  const [destinations, setDestinations] = useState<
+    Record<DirectionKey, FunnelDestination>
+  >({
+    insite: { pipelineId: null, statusId: null },
+    mavi: { pipelineId: null, statusId: null },
+  });
 
   const [loadingFields, setLoadingFields] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -82,8 +109,15 @@ export default function MappingsPage() {
       setKommoFields(fields);
       setPipelines(fetchedPipelines as Pipeline[]);
 
-      if (settings.pipelineId) setActivePipelineId(String(settings.pipelineId));
-      if (settings.statusId) setActiveStatusId(String(settings.statusId));
+      setDestinations({
+        insite: normalizeDestination(settings.directions?.insite),
+        mavi: normalizeDestination(
+          settings.directions?.mavi ?? {
+            pipelineId: settings.pipelineId ?? null,
+            statusId: settings.statusId ?? null,
+          }
+        ),
+      });
 
       if (saved.length > 0) {
         setDrafts(
@@ -106,7 +140,9 @@ export default function MappingsPage() {
   }, []);
 
   useEffect(() => {
-    fetchAll();
+    queueMicrotask(() => {
+      void fetchAll();
+    });
   }, [fetchAll]);
 
   const handleChange = (payloadField: string, compositeId: string) => {
@@ -117,6 +153,32 @@ export default function MappingsPage() {
           : d
       )
     );
+  };
+
+  const handleDestinationPipelineChange = (
+    direction: DirectionKey,
+    value: string
+  ) => {
+    setDestinations((prev) => ({
+      ...prev,
+      [direction]: {
+        pipelineId: value ? parseInt(value, 10) : null,
+        statusId: null,
+      },
+    }));
+  };
+
+  const handleDestinationStatusChange = (
+    direction: DirectionKey,
+    value: string
+  ) => {
+    setDestinations((prev) => ({
+      ...prev,
+      [direction]: {
+        ...prev[direction],
+        statusId: value ? parseInt(value, 10) : null,
+      },
+    }));
   };
 
   const handleSave = async () => {
@@ -138,9 +200,15 @@ export default function MappingsPage() {
           };
         });
 
+      const directionSettings = DIRECTIONS.reduce((acc, direction) => {
+        acc[direction.key] = toDestinationPayload(destinations[direction.key]);
+        return acc;
+      }, {} as Record<DirectionKey, FunnelDestination>);
+
       const settingsPayload: IntegrationSettings = {
-        pipelineId: activePipelineId ? parseInt(activePipelineId) : null,
-        statusId: activeStatusId ? parseInt(activeStatusId) : null,
+        pipelineId: directionSettings.mavi.pipelineId,
+        statusId: directionSettings.mavi.statusId,
+        directions: directionSettings,
       };
 
       await Promise.all([
@@ -250,65 +318,108 @@ export default function MappingsPage() {
               <div className="flex items-center gap-2">
                 <span className="text-xl">🎯</span>
                 <CardTitle className="text-base font-medium">
-                  Destino do Lead
+                  Destinos por direction
                 </CardTitle>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Escolha em qual Funil e Etapa os novos Leads deverão ser
-                criados automaticamente.
+                Configure o Funil e a Etapa usados para cada origem do webhook.
               </p>
             </CardHeader>
             <CardContent className="pt-5">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>Funil (Pipeline)</Label>
-                  <Select
-                    value={activePipelineId}
-                    onValueChange={(val) => {
-                      setActivePipelineId(val ?? "");
-                      setActiveStatusId(""); // reset status when pipeline changes
-                    }}
-                  >
-                    <SelectTrigger className="bg-muted/30 border-border/50">
-                      <SelectValue placeholder="Selecione um funil…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pipelines.map((p) => (
-                        <SelectItem key={p.id} value={String(p.id)}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {DIRECTIONS.map((direction) => {
+                  const destination = destinations[direction.key];
+                  const activePipelineId = destinationSelectValue(
+                    destination.pipelineId
+                  );
+                  const activeStatusId = destinationSelectValue(
+                    destination.statusId
+                  );
+                  const activePipeline = pipelines.find(
+                    (p) => String(p.id) === activePipelineId
+                  );
 
-                <div className="space-y-2">
-                  <Label>Etapa (Status)</Label>
-                  <Select
-                    value={activeStatusId}
-                    onValueChange={(val) => setActiveStatusId(val ?? "")}
-                    disabled={!activePipelineId}
-                  >
-                    <SelectTrigger className="bg-muted/30 border-border/50">
-                      <SelectValue placeholder="Selecione uma etapa…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {pipelines
-                        .find((p) => String(p.id) === activePipelineId)
-                        ?.statuses.map((s) => (
-                          <SelectItem key={s.id} value={String(s.id)}>
-                            <div className="flex items-center gap-2">
-                              <span
-                                className="w-3 h-3 rounded-full border border-border/50"
-                                style={{ backgroundColor: s.color }}
-                              />
-                              {s.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  return (
+                    <div
+                      key={direction.key}
+                      className="rounded-lg border border-border/50 bg-muted/20 p-4 space-y-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium">
+                            {direction.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {direction.description}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="text-xs bg-muted text-muted-foreground border border-border/40"
+                        >
+                          {direction.key}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label>Funil (Pipeline)</Label>
+                          <Select
+                            value={activePipelineId}
+                            onValueChange={(val) =>
+                              handleDestinationPipelineChange(
+                                direction.key,
+                                val ?? ""
+                              )
+                            }
+                          >
+                            <SelectTrigger className="bg-muted/30 border-border/50">
+                              <SelectValue placeholder="Selecione um funil…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {pipelines.map((p) => (
+                                <SelectItem key={p.id} value={String(p.id)}>
+                                  {p.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                          <Label>Etapa (Status)</Label>
+                          <Select
+                            value={activeStatusId}
+                            onValueChange={(val) =>
+                              handleDestinationStatusChange(
+                                direction.key,
+                                val ?? ""
+                              )
+                            }
+                            disabled={!activePipelineId}
+                          >
+                            <SelectTrigger className="bg-muted/30 border-border/50">
+                              <SelectValue placeholder="Selecione uma etapa…" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {activePipeline?.statuses.map((s) => (
+                                <SelectItem key={s.id} value={String(s.id)}>
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className="w-3 h-3 rounded-full border border-border/50"
+                                      style={{ backgroundColor: s.color }}
+                                    />
+                                    {s.name}
+                                  </div>
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

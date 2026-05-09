@@ -24,8 +24,10 @@ public class WebhookController {
      * and creates a lead (with contact) in Kommo.
      */
     @PostMapping("/form")
-    public ResponseEntity<Map<String, Object>> receiveForm(@RequestBody FormPayload payload) {
-        JsonNode result = leadCreationService.createLead(payload);
+    public ResponseEntity<Map<String, Object>> receiveForm(
+            @RequestParam(required = false) String direction,
+            @RequestBody FormPayload payload) {
+        JsonNode result = leadCreationService.createLead(payload, direction);
         return ResponseEntity.ok(Map.of(
                 "success", true,
                 "message", "Lead created successfully",
