@@ -1,7 +1,6 @@
 package com.mavi.kommo.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 import java.util.Map;
 
@@ -13,8 +12,18 @@ import java.util.Map;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FormPayload {
 
+    private String direction;
     private Map<String, Object> fields;
     private Map<String, String> utms;
+
+    public String getDirection() {
+        if (direction != null && !direction.isBlank()) {
+            return direction;
+        }
+
+        Object fieldDirection = getField("direction");
+        return fieldDirection != null ? String.valueOf(fieldDirection) : null;
+    }
 
     /**
      * Returns the value for a given payload field key.

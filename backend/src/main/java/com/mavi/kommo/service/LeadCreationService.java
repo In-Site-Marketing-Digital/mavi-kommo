@@ -8,6 +8,8 @@ import com.mavi.kommo.domain.KommoToken;
 import com.mavi.kommo.domain.KommoField;
 import com.mavi.kommo.dto.FormPayload;
 import com.mavi.kommo.repository.SettingsRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +23,8 @@ import java.util.*;
  */
 @Service
 public class LeadCreationService {
+
+    private static final Logger log = LoggerFactory.getLogger(LeadCreationService.class);
 
     private final MappingService mappingService;
     private final KommoApiService kommoApiService;
@@ -48,6 +52,13 @@ public class LeadCreationService {
         IntegrationSettings settings = settingsRepository.getSettings();
         FunnelDestination destination = resolveFunnelDestination(settings, direction);
 
+        log.info(
+                "Creating Kommo lead: direction={}, mappedFields={}, destination={}",
+                normalizeDirection(direction),
+                mappings.size(),
+                describeDestination(destination)
+        );
+
         Map<String, Object> lead = buildLeadPayload(payload, mappings, destination);
         Map<String, Object> contact = buildContactPayload(payload, mappings);
 
@@ -61,7 +72,9 @@ public class LeadCreationService {
                 token.getAccountDomain()
         );
 
-        return response.getBody();
+        JsonNode body = response.getBody();
+        log.info("Kommo lead creation completed: direction={}, hasResponse={}", normalizeDirection(direction), body != null);
+        return body;
     }
 
     // ── Private builders ───────────────────────────────────────────────────────
@@ -111,7 +124,7 @@ public class LeadCreationService {
                     }
                 }
             } catch (Exception e) {
-                // Ignore errors fetching custom fields so we don't break lead creation
+                log.warn("Failed to map UTM fields; continuing lead creation without UTM custom fields", e);
             }
         }
 
@@ -172,26 +185,53 @@ public class LeadCreationService {
 
     private FunnelDestination resolveFunnelDestination(IntegrationSettings settings, String direction) {
         if (settings == null) {
+            log.warn("No integration settings found; lead will be created without explicit pipeline/status");
             return new FunnelDestination();
         }
 
         Map<String, FunnelDestination> directions = settings.getDirections();
         String normalizedDirection = normalizeDirection(direction);
 
-        if (normalizedDirection != null && directions != null) {
-            FunnelDestination destination = directions.get(normalizedDirection);
+        if (normalizedDirection != null) {
+            FunnelDestination destination = directions != null ? directions.get(normalizedDirection) : null;
             if (hasDestination(destination)) {
+                log.info("Resolved destination from direction '{}': {}", normalizedDirection, describeDestination(destination));
                 return destination;
             }
+
+            if ("mavi".equals(normalizedDirection)) {
+                FunnelDestination legacyDestination = buildLegacyDestination(settings);
+                if (hasDestination(legacyDestination)) {
+                    log.info("Resolved destination from legacy Mavi settings: {}", describeDestination(legacyDestination));
+                    return legacyDestination;
+                }
+            }
+
+            log.warn(
+                    "Direction '{}' did not match a configured destination; lead will be created without explicit pipeline/status",
+                    normalizedDirection
+            );
+            return new FunnelDestination();
         }
 
         if (directions != null) {
             FunnelDestination defaultDestination = directions.get("mavi");
             if (hasDestination(defaultDestination)) {
+                log.info("No direction provided; using default Mavi destination: {}", describeDestination(defaultDestination));
                 return defaultDestination;
             }
         }
 
+        FunnelDestination legacyDestination = buildLegacyDestination(settings);
+        if (hasDestination(legacyDestination)) {
+            log.info("No direction provided; using legacy destination: {}", describeDestination(legacyDestination));
+        } else {
+            log.warn("No default destination configured; lead will be created without explicit pipeline/status");
+        }
+        return legacyDestination;
+    }
+
+    private FunnelDestination buildLegacyDestination(IntegrationSettings settings) {
         return FunnelDestination.builder()
                 .pipelineId(settings.getPipelineId())
                 .statusId(settings.getStatusId())
@@ -208,5 +248,13 @@ public class LeadCreationService {
             return null;
         }
         return direction.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String describeDestination(FunnelDestination destination) {
+        if (destination == null) {
+            return "none";
+        }
+
+        return "pipelineId=" + destination.getPipelineId() + ", statusId=" + destination.getStatusId();
     }
 }

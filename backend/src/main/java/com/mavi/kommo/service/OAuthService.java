@@ -6,6 +6,8 @@ import com.mavi.kommo.domain.KommoToken;
 import com.mavi.kommo.exception.KommoApiException;
 import com.mavi.kommo.exception.TokenNotFoundException;
 import com.mavi.kommo.repository.TokenRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -18,6 +20,8 @@ import java.util.UUID;
 
 @Service
 public class OAuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(OAuthService.class);
 
     private final KommoProperties kommoProperties;
     private final TokenRepository tokenRepository;
@@ -34,6 +38,7 @@ public class OAuthService {
 
     /** Builds the Kommo authorization URL the user should be redirected to. */
     public String buildAuthorizationUrl() {
+        log.info("Building Kommo authorization URL");
         return String.format(
                 "https://www.kommo.com/oauth?client_id=%s&state=%s&redirect_uri=%s&response_type=code",
                 kommoProperties.getClientId(),
@@ -50,6 +55,7 @@ public class OAuthService {
      */
     public KommoToken exchangeCode(String code, String referer) {
         String tokenUrl = "https://" + referer + "/oauth2/access_token";
+        log.info("Exchanging Kommo OAuth code for account={}", referer);
 
         Map<String, String> body = new HashMap<>();
         body.put("client_id", kommoProperties.getClientId());
@@ -65,8 +71,10 @@ public class OAuthService {
                     tokenUrl, HttpMethod.POST, request, JsonNode.class);
             KommoToken token = parseTokenResponse(response.getBody(), referer);
             tokenRepository.saveToken(token);
+            log.info("Kommo OAuth token stored for account={}, expiresAt={}", token.getAccountDomain(), token.getExpiresAt());
             return token;
         } catch (Exception e) {
+            log.error("Failed to exchange Kommo OAuth code for account={}", referer, e);
             throw new KommoApiException("Failed to exchange OAuth code: " + e.getMessage(), e);
         }
     }
@@ -77,6 +85,7 @@ public class OAuthService {
      */
     public KommoToken refreshToken(KommoToken expiredToken) {
         String tokenUrl = "https://" + expiredToken.getAccountDomain() + "/oauth2/access_token";
+        log.info("Refreshing Kommo OAuth token for account={}", expiredToken.getAccountDomain());
 
         Map<String, String> body = new HashMap<>();
         body.put("client_id", kommoProperties.getClientId());
@@ -92,8 +101,10 @@ public class OAuthService {
                     tokenUrl, HttpMethod.POST, request, JsonNode.class);
             KommoToken newToken = parseTokenResponse(response.getBody(), expiredToken.getAccountDomain());
             tokenRepository.saveToken(newToken);
+            log.info("Kommo OAuth token refreshed for account={}, expiresAt={}", newToken.getAccountDomain(), newToken.getExpiresAt());
             return newToken;
         } catch (Exception e) {
+            log.error("Failed to refresh Kommo OAuth token for account={}", expiredToken.getAccountDomain(), e);
             throw new KommoApiException("Failed to refresh OAuth token: " + e.getMessage(), e);
         }
     }
@@ -109,21 +120,28 @@ public class OAuthService {
 
         // Refresh if expiring within the next 60 seconds
         if (Instant.now().isAfter(token.getExpiresAt().minusSeconds(60))) {
+            log.info("Stored Kommo token is expiring soon; refreshing account={}", token.getAccountDomain());
             return refreshToken(token);
         }
 
+        log.info("Using stored Kommo token for account={}", token.getAccountDomain());
         return token;
     }
 
     public boolean isConnected() {
-        return tokenRepository.findToken().isPresent();
+        boolean connected = tokenRepository.findToken().isPresent();
+        log.info("Kommo connection check: connected={}", connected);
+        return connected;
     }
 
     public Optional<KommoToken> getStoredToken() {
-        return tokenRepository.findToken();
+        Optional<KommoToken> token = tokenRepository.findToken();
+        log.info("Loaded stored Kommo token: present={}", token.isPresent());
+        return token;
     }
 
     public void disconnect() {
+        log.info("Deleting stored Kommo OAuth token");
         tokenRepository.deleteToken();
     }
 

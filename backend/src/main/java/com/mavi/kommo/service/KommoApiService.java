@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.mavi.kommo.domain.KommoField;
 import com.mavi.kommo.domain.KommoToken;
 import com.mavi.kommo.exception.KommoApiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -13,6 +15,8 @@ import java.util.List;
 
 @Service
 public class KommoApiService {
+
+    private static final Logger log = LoggerFactory.getLogger(KommoApiService.class);
 
     private final OAuthService oAuthService;
     private final RestTemplate restTemplate;
@@ -37,6 +41,7 @@ public class KommoApiService {
     public List<com.mavi.kommo.dto.Pipeline> getPipelines() {
         KommoToken token = oAuthService.getValidToken();
         String url = "https://" + token.getAccountDomain() + "/api/v4/leads/pipelines";
+        log.info("Fetching Kommo pipelines for account={}", token.getAccountDomain());
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token.getAccessToken());
@@ -73,8 +78,10 @@ public class KommoApiService {
                 }
             }
         } catch (Exception e) {
+            log.error("Failed to fetch Kommo pipelines for account={}", token.getAccountDomain(), e);
             throw new KommoApiException("Failed to fetch pipelines: " + e.getMessage(), e);
         }
+        log.info("Fetched Kommo pipelines: account={}, count={}", token.getAccountDomain(), pipelines.size());
         return pipelines;
     }
 
@@ -88,6 +95,7 @@ public class KommoApiService {
      */
     public ResponseEntity<JsonNode> post(String path, Object body, String accessToken, String accountDomain) {
         String url = "https://" + accountDomain + path;
+        log.info("Calling Kommo API: method=POST, account={}, path={}", accountDomain, path);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(accessToken);
@@ -95,8 +103,16 @@ public class KommoApiService {
         HttpEntity<Object> request = new HttpEntity<>(body, headers);
 
         try {
-            return restTemplate.exchange(url, HttpMethod.POST, request, JsonNode.class);
+            ResponseEntity<JsonNode> response = restTemplate.exchange(url, HttpMethod.POST, request, JsonNode.class);
+            log.info(
+                    "Kommo API call completed: method=POST, account={}, path={}, status={}",
+                    accountDomain,
+                    path,
+                    response.getStatusCode()
+            );
+            return response;
         } catch (Exception e) {
+            log.error("Kommo API call failed: method=POST, account={}, path={}", accountDomain, path, e);
             throw new KommoApiException("Kommo API call failed [POST " + path + "]: " + e.getMessage(), e);
         }
     }
@@ -107,6 +123,7 @@ public class KommoApiService {
         KommoToken token = oAuthService.getValidToken();
         String url = "https://" + token.getAccountDomain()
                 + "/api/v4/" + kommoEntity + "/custom_fields?limit=250";
+        log.info("Fetching Kommo custom fields: account={}, entity={}", token.getAccountDomain(), kommoEntity);
 
         HttpHeaders headers = new HttpHeaders();
         headers.setBearerAuth(token.getAccessToken());
@@ -137,10 +154,22 @@ public class KommoApiService {
                 }
             }
         } catch (Exception e) {
+            log.error(
+                    "Failed to fetch Kommo custom fields: account={}, entity={}",
+                    token.getAccountDomain(),
+                    kommoEntity,
+                    e
+            );
             throw new KommoApiException(
                     "Failed to fetch fields for entity '" + kommoEntity + "': " + e.getMessage(), e);
         }
 
+        log.info(
+                "Fetched Kommo fields: account={}, entity={}, count={}",
+                token.getAccountDomain(),
+                kommoEntity,
+                fields.size()
+        );
         return fields;
     }
 

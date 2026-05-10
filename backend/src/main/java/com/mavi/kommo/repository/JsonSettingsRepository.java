@@ -33,17 +33,20 @@ public class JsonSettingsRepository implements SettingsRepository {
         if (settingsFile.exists()) {
             try {
                 this.cachedSettings = objectMapper.readValue(settingsFile, IntegrationSettings.class);
+                log.info("Loaded settings from {}", settingsFile.getAbsolutePath());
             } catch (IOException e) {
                 log.error("Failed to load settings.json", e);
                 this.cachedSettings = new IntegrationSettings();
             }
         } else {
+            log.info("Settings file not found; using empty settings: {}", settingsFile.getAbsolutePath());
             this.cachedSettings = new IntegrationSettings();
         }
     }
 
     @Override
     public IntegrationSettings getSettings() {
+        log.info("Returning cached integration settings");
         return cachedSettings;
     }
 
